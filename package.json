@@ -1,0 +1,23 @@
+{
+  "bin": {
+    "nodegun": "server.js"
+  },
+  "dependencies": {
+    "argparse": "^1.0.0",
+    "@types/argparse": "^1.0.0",
+    "@types/node": "^8.0.0"
+  },
+  "description": "Node.js server supporting the Nailgun protocol",
+  "devDependencies": {
+    "source-map-support": "^0.4.0",
+    "typescript": "^2.4.0"
+  },
+  "license": "Apache-2.0",
+  "name": "@lucidsoftware/nodegun",
+  "repository": "lucidsoftware/nodegun",
+  "scripts": {
+    "prestart": "yarn install && tsc",
+    "start": "node main.js"
+  },
+  "version": "0.0.1"
+}
