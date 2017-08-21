@@ -22,7 +22,14 @@ export class Handler {
                     if (workingDirectory == null) {
                         throw new MissingWorkingDirectory();
                     }
-                    const command = me.commandFactory.create(workingDirectory, chunk.data.toString());
+                    let command;
+                    try {
+                        command = me.commandFactory.create(workingDirectory, chunk.data.toString());
+                    } catch (e) {
+                        writer.write(new Chunk(ChunkType.Stderr, Buffer.from(`${e.stack}\n`)));
+                        writer.write(new Chunk(ChunkType.Exit, Buffer.from((2).toString())));
+                        return;
+                    }
                     this.removeListener('data', listener);
                     command.invoke({args, env, workingDirectory}, reader, writer, me.ref);
                     break;

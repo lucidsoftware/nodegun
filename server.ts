@@ -13,7 +13,7 @@ export class Server {
         this.server = net.createServer(socket => {
             socket.setNoDelay(true);
             socket.unref();
-            this.lock.acquire().then(release => {     
+            this.lock.acquire().then(release => {
                 const parser = new ChunkParser();
                 const serializer = new ChunkSerializer();
                 socket.pipe(parser);
