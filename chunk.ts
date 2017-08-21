@@ -1,14 +1,7 @@
-import {Reader} from './reader';
+import {Transform, Writable} from 'stream';
 
 export class Chunk {
-    constructor(public type: ChunkType, public data: Buffer) {
-    }
-
-    serialize() {
-        const buffer = Buffer.concat([Buffer.allocUnsafe(5), this.data]);
-        buffer.writeUInt32BE(this.data.length, 0);
-        buffer.writeInt8(this.type, 4);
-        return buffer;
+    constructor(public type: ChunkType, public data: Buffer = Buffer.allocUnsafe(0)) {
     }
 }
 
@@ -26,72 +19,75 @@ export enum ChunkType {
     Exit = 'X'.charCodeAt(0),
 }
 
-export class ChunkReader implements Reader<Buffer> {
+export class ChunkParser extends Transform {
     private readonly buffers: Buffer[] = [];
     private bufferSize = 0;
-
-    constructor(private reader: Reader<Chunk>) {
+    
+    constructor() {
+        super({readableObjectMode:true});
     }
 
-    next(data: Buffer) {
+    _transform(data: Buffer, encoding: string, callback: Function) {
         this.buffers.push(data);
         this.bufferSize += data.length;
-        if (this.bufferSize < 5) {
-            return;
-        }
-        const buffer = Buffer.concat(this.buffers);
-        let offset;
-        for (offset = 0; offset + 5 <= buffer.length; ) {
-            const size = buffer.readUInt32BE(offset);
-            const type = buffer.readUInt8(offset + 4);
-            if (buffer.length < offset + size + 4 + 1) {
-                break;
+        if (this.bufferSize >= 4 + 1) {
+            const buffer = Buffer.concat(this.buffers);
+            let offset;
+            for (offset = 0; offset + 4 + 1 <= buffer.length; ) {
+                const size = buffer.readUInt32BE(offset);
+                const type = buffer.readUInt8(offset + 4);
+                if (buffer.length < offset + size + 4 + 1) {
+                    break;
+                }
+                offset += 4 + 1;
+                this.push(new Chunk(type, buffer.slice(offset, offset + size)));
+                offset += size;
             }
-            offset += 4 + 1;
-            this.reader.next(new Chunk(type, buffer.slice(offset, offset + size)));
-            offset += size;
+            if (offset) {
+                this.buffers.length = 0;
+                this.buffers.push(buffer.slice(offset));
+                this.bufferSize = buffer.length - offset;
+            }
         }
-        if (offset) {
-            this.buffers.length = 0;
-            this.buffers.push(buffer.slice(offset));
-            this.bufferSize = buffer.length - offset;
-        }
+        callback();
     }
 
-    end() {
+    _flush(callback: Function) {
         const buffer = Buffer.concat(this.buffers);
-        if (5 < buffer.length) {
-            throw new ChunkReader.IncompleteChunkError(buffer.readUInt32BE(0), this.bufferSize - 5);
+        if (4 + 1 < buffer.length) {
+            callback(new ChunkParser.IncompleteChunkError(buffer.readUInt32BE(0), this.bufferSize - 5));
         } else if (buffer.length) {
-            throw new ChunkReader.IncompleteHeaderError(buffer);
+            callback(new ChunkParser.IncompleteHeaderError(buffer));
+        } else {
+            callback();
         }
-        this.reader.end();
     }
 }
 
-export class ChunkWriter implements Reader<Chunk> {
-    constructor(private writer: Reader<Buffer>) {
-    }
-
-    next(chunk: Chunk) {
-        this.writer.next(chunk.serialize());
-    }
-
-    end() {
-        this.writer.end();
-    }
-}
-
-export namespace ChunkReader {
+export namespace ChunkParser {
     export class IncompleteHeaderError extends Error {
         constructor(data: Buffer) {
             super(`Incomplete header: ${data.toString('hex')}`);
         }
     }
-
+    
     export class IncompleteChunkError extends Error {
         constructor(expected: number, actual: number) {
             super(`Incomplete chunk of length ${actual}, expected ${expected}`);
         }
+    }
+    
+}
+
+export class ChunkSerializer extends Transform {
+    constructor() {
+        super({writableObjectMode:true});
+    }
+
+    _transform(chunk: Chunk, encoding: string, callback: Function) {
+        const header = Buffer.allocUnsafe(4 + 1);
+        header.writeUInt32BE(chunk.data.length, 0);
+        header.writeInt8(chunk.type, 4);
+        callback(null, Buffer.concat([header, chunk.data]));
     }
 }

@@ -1,12 +1,5 @@
-import {Command} from '../command';
-
-const command: Command = ({args, workingDirectory}, writer) => {
-    writer.out(Buffer.from('Hello world\n'));
-    for (const arg of args) {
-        writer.out(Buffer.from(`Argument: ${arg}\n`));
-    }
-    writer.out(Buffer.from(`Working Directory: ${workingDirectory}`));
-    writer.exit();
+console.log('Hello world');
+for (const arg of process.argv.slice(2)) {
+    console.log(`Argument: ${arg}\n`);
 }
-
-export = command;
+console.log(`Working Directory: ${process.cwd()}`);

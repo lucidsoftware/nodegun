@@ -1,7 +1,13 @@
 import {Chunk, ChunkType} from './chunk';
-import {Reader} from './reader';
+import {Readable, Transform, Writable} from 'stream';
+import {EventEmitter} from 'events';
+import * as fs from 'fs';
 
-export type Command = (context: CommandContext, writer: CommandWriter) => Reader<Buffer>|void;
+export interface Ref {
+    ref(): void
+    unref(): void
+}
+
 
 export interface CommandContext {
     args: string[]
@@ -9,107 +15,155 @@ export interface CommandContext {
     workingDirectory: string
 }
 
-export class CommandDispatcher implements Reader<Chunk> {
-    private args: string[] = [];
-    private env: Map<string, string> = new Map();
-    private workingDirectory?: string;
-    private reader?: Reader<Buffer>|null;
+// console.log, console.error maintain references to write(), so it must be replaced with a permenant hook
+let stderrWrite = process.stderr.write;
+let stdoutWrite = process.stdout.write;
+process.stderr.write = function() {
+    return stderrWrite.apply(this, arguments);
+};
+process.stdout.write = function() {
+    return stdoutWrite.apply(this, arguments);
+};
 
-    constructor(private writer: InternalCommandWriter) {
+export class Command {
+    constructor(private readonly main: () => void) {
     }
 
-    next(chunk: Chunk) {
-        switch (chunk.type) {
-            case ChunkType.Argument:
-                this.args.push(chunk.data.toString());
-                break;
-            case ChunkType.Command:
-                if (this.workingDirectory == null) {
-                    throw new CommandDispatcher.IncompleteCommandError('Missing working directory');
-                }
-                const command: Command = require(chunk.data.toString());
-                const parameters = {args:this.args, env:this.env, workingDirectory:this.workingDirectory};
-                this.reader = command(parameters, this.writer) || null;
-                if (this.reader) {
-                    this.writer.requestIn();
-                }
-                break;
-            case ChunkType.Environment:
-                const [name, value] = chunk.data.toString().split('=', 2) as [string, string|undefined];
-                if (value != null) {
-                    this.env.set(name, value);
-                }
-                break;
-            case ChunkType.Stdin:
-                this.writer.requestIn();
-                this.reader!.next(chunk.data);
-                break;
-            case ChunkType.StdinEnd:
-                this.reader!.end();
-                break;
-            case ChunkType.WorkingDirectory:
-                this.workingDirectory = chunk.data.toString();
-                break;
+    invoke(context: CommandContext, reader: Readable, writer: Writable, ref: Ref) {
+        const finalizers: (() => void)[] = [];
+
+        function finalize(code?: number | undefined) {
+            for (const finalizer of finalizers) {
+                finalizer();
+            }
+            writer.end(new Chunk(ChunkType.Exit, Buffer.from((code || 0).toString())));
+            ref.ref();
         }
-    }
 
-    end() {
-    }
-}
+        ref.unref();
 
-export namespace CommandDispatcher {
-    export class IncompleteCommandError extends Error {
-    }
-}
+        // main module
+        finalizers.push((mainModule => () => process.mainModule = mainModule)(process.mainModule));
 
-export interface CommandWriter {
-    out(data: Buffer): void
-    err(data: Buffer): void
-    exit(code?: number): void
-}
+        // arguments
+        finalizers.push((argv => () => process.argv = argv)(process.argv));
+        process.argv = process.argv.slice(2).concat(context.args);
 
-export class InternalCommandWriter implements CommandWriter {
-    private exited = false;
-
-    constructor(private writer: Reader<Chunk>) {
-    }
-
-    requestIn() {
-        if (this.exited) {
-            return;
+        // environment variables
+        finalizers.push((env => () => process.env = env)(process.env));
+        process.env = {};
+        for (const [key, value] of context.env) {
+            process.env[key] = value;
         }
-        this.writer.next(new Chunk(ChunkType.StdinStart, Buffer.allocUnsafe(0)));
+    
+        // working directory
+        finalizers.push((workingDirectory => () => process.chdir(workingDirectory))(process.cwd()));
+        process.chdir(context.workingDirectory);
+
+        // stdin
+        finalizers.push((stdin => () => Object.defineProperty(process, 'stdin', {configurable:true, enumerable:true, get: () => stdin}))(process.stdin));
+        const stdin = new CommandStdin(writer, ref);
+        Object.defineProperty(process, 'stdin', {configurable:true, enumerable:true, get: () => stdin});
+        //process.stdin.end();
+        reader.pipe(stdin);//.pipe(process.stdin);
+        //finalizers.push(() => stdin.unpipe(process.stdin));
+
+        // stdout
+        const stdout = new CommandStdout();
+        stdout.pipe(writer, {end:false});
+        finalizers.push((write => () => stdoutWrite = write)(stdoutWrite));
+        stdoutWrite = stdout.write.bind(stdout);
+
+        // stderr
+        const stderr = new CommandStderr();
+        stderr.pipe(writer, {end:false});
+        finalizers.push((write => () => stderrWrite = write)(stderrWrite));
+        stderrWrite = stderr.write.bind(stderr);
+
+        finalizers.push((exit => () => process.exit = exit)(process.exit));
+        process.exit = finalize as (code?: number | undefined) => never;
+    
+        process.once('beforeExit', finalize);
+    
+        this.main();
+    }
+}
+
+class CommandStdin extends Transform {
+    constructor(private readonly writer: Writable, ref: Ref) {
+        super({writableObjectMode:true});
+        this.on('newListener', type => {
+            switch (type) {
+                case 'data':
+                case 'end':
+                    ref.ref();
+            }
+        });
+        this.on('removeListener', function(type) {
+            switch (type) {
+                case 'data':
+                case 'end':
+                    if (!this.listenerCount('data') && !this.listenerCount('end')) {
+                        ref.unref();    
+                    }
+            }
+        });
         // NodeJS will not flush this buffer
         // a workaround is to send a newline (!) but that clutters the output
-        // this.writer.next(new Chunk(ChunkType.Stderr, Buffer.from('\n')));
+        // this.writer.write(new Chunk(ChunkType.Stderr, Buffer.from('\n')));
+        this._request();
     }
 
-    out(data: Buffer) {
-        this.writer.next(new Chunk(ChunkType.Stdout, data));
+    private _request() {
+        this.writer.write(new Chunk(ChunkType.StdinStart));
     }
 
-    err(data: Buffer) {
-        this.writer.next(new Chunk(ChunkType.Stderr, data));
-    }
-
-    exit(code?: number) {
-        this.exited = true;
-        this.writer.next(new Chunk(ChunkType.Exit, Buffer.from((code || 0).toString())));
-        this.writer.end();
+    _transform(chunk: Chunk, encoding: string, callback: Function) {
+        switch (chunk.type) {
+            case ChunkType.Stdin:
+                callback(null, chunk.data);
+                this._request();
+                break;
+            case ChunkType.StdinEnd:
+                callback();
+                this.end();
+                break;
+            case ChunkType.Heartbeat:
+                callback();    
+                break;
+            default:
+                callback(new CommandStdin.UnexpectedChunk(chunk.type));
+        }
     }
 }
 
-export class CollectedReader implements Reader<Buffer> {
-    private readonly buffers: Buffer[] = [];
-    
-    constructor(private f: (data: Buffer) => void) {
+namespace CommandStdin {
+    export class UnexpectedChunk extends Error {
+        constructor(type: ChunkType) {
+            super(`Unexpected ${String.fromCharCode(type)} chunk in stdin stream`);
+        }
     }
-    
-    next(buffer: Buffer) {
-        this.buffers.push(buffer);
+}
+
+class CommandOutput extends Transform {
+    constructor(private readonly type: ChunkType) {
+        super({readableObjectMode: true});
     }
 
-    end() {
-        this.f(Buffer.concat(this.buffers));
+    _transform(data: Buffer, encoding: string, callback: Function) {
+        //console.error('CommandOutput._transform\n');
+        callback(null, new Chunk(this.type, data));
     }
-};
+}
+
+class CommandStdout extends CommandOutput {
+    constructor() {
+        super(ChunkType.Stdout);
+    }
+}
+
+class CommandStderr extends CommandOutput {
+    constructor() {
+        super(ChunkType.Stderr);
+    }
+}

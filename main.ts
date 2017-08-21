@@ -4,9 +4,8 @@ import * as cluster from 'cluster';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
-import {CommandDispatcher, InternalCommandWriter} from './command';
-import {Reader} from './reader';
-import * as server from './server';
+import {CommandFactory} from './commandfactory';
+import {Server} from './server';
 
 try {
     require('source-map-support').install();
@@ -35,22 +34,22 @@ parser.addArgument(['--workers'], {
 const args: {tcp:string|undefined, local:string|undefined, workers:number|undefined} = parser.parseArgs();
 
 function startServer() {
-    const s = server.create();
+    const server = new Server(new CommandFactory());
     if (args.local) {
-        s.listen(args.local);
+        server.server.listen(args.local);
     } else if (args.tcp) {
         const [first, second] = args.tcp.split(':', 2) as [string, string|undefined];
         if (second == null) {
             if (first.includes('.')) {
-                s.listen(2113, first);
+                server.server.listen(2113, first);
             } else {
-                s.listen(first);
+                server.server.listen(first);
             }
         } else {
-            s.listen(+first, second);
+            server.server.listen(+first, second);
         }
     } else {
-        s.listen(2113);
+        server.server.listen(2113);
     }
 }
 

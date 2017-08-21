@@ -18,7 +18,7 @@ real    0m0.102s
 
 $ time ng helloworld.js
 Hello world
-real    0m0.003s
+real    0m0.004s
 ```
 
 A more intensive example:
@@ -36,7 +36,7 @@ $ time node typescript.js > out.js
 real    0m0.470s
 
 $ time ng typescript.js > out.js
-real    0m0.011s
+real    0m0.012s
 ```
 
 ## Architecture
@@ -46,7 +46,7 @@ programs. Users invoke a small executable (written in C), which connects to a lo
 
 Nodegun is a Node.js server that is compatible with the Nailgun protocol and native client.
 
-Optionally, for CPU-dominent concurrent workloads, nodegun can run multiple worker processes.
+Optionally, for parallelized workloads, nodegun can run multiple worker processes.
 
 <div style="text-align:center"><img src="architecture.png"></div>
 
@@ -65,13 +65,11 @@ $ npm install -g nodegun
 $ nodegun
 ```
 
-3. Create a "nail" -- a program that can runs in the long-lived Node.JS process.
+3. Create a Node.JS program to run (aka a "nail").
 
 ```js
 // example_nail.js
-modules.exports = (context, writer) => {
-    writer.out(Buffer.from(context.args.join('-')));
-};
+console.log(process.argv.slice(2).join('-'));
 ```
 
 4. Run the client 
@@ -103,35 +101,12 @@ Optional arguments:
 
 ## Writing a nail
 
-```js
-module.exports = (context, writer) => {
-    // context comes from the client process
-    context.args;          // Array of arguments
-    context.env;           // Map of environment variables
-    context.workingDirectory; // working directory
+Most Node.JS programs should work as nails without modification.
 
-    // use writer to emit
-    writer.out(Buffer.from('output')); // write to stdout
-    writer.err(Buffer.from('error')); // write to stderr
-    writer.exit();         // exit with code 0
-    writer.exit(1);        // exit with code 1
+Nodegun is designed to mimick command line arguments, environment variables, stdin, stdout, stderr, and working
+directory.
 
-    // if you need to read stdin, return an object with callbacks
-    // if you don't need stdin, return undefined
-    return {
-        next: data => {
-            // data is Buffer from stdin
-        },
-        end: () => {
-            // stdin has ended
-        },
-    };
-};
-```
-
-Note that the client will not exit until `writer.exit()` is invoked.
-
-Nodegun distributes execution across its workers (if it has them). It does not prevent concurrent execution within a worker.
+Each worker process (or the main process, if there are no workers) runs only one nail at a time.
 
 ## What is this good for?
 
