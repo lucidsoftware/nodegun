@@ -108,6 +108,15 @@ directory.
 
 Each worker process (or the main process, if there are no workers) runs only one nail at a time.
 
+## Examples
+
+Nodegun comes with a few [built-in nails](examples/).
+
+* `ng ./examples/hello` - Print `Hello World`
+* `ng ./examples/info` - Print arguments and working direcotry
+* `ng ./examples/echo` - Copy stdin to stdout
+
+
 ## What is this good for?
 
 We use Nodegun in our build system. A fast CLI to Node.js amenable to in concurrent, polyglot build systems.

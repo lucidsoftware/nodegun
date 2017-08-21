@@ -5,3 +5,5 @@
 *.tgz
 
 node_modules/
+
+!/examples/*.js
