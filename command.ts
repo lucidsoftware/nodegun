@@ -90,22 +90,28 @@ export class Command {
 }
 
 class CommandStdin extends Transform {
-    constructor(private readonly writer: Writable, ref: Ref) {
+    private isEnded: boolean = false;
+
+    private newListener = (type: string) => {
+        switch (type) {
+            case 'data':
+            case 'end':
+                if (!this.isPaused) {
+                    this.ref.ref();
+                }
+        }
+    }
+
+    constructor(private readonly writer: Writable, private readonly ref: Ref) {
         super({writableObjectMode:true});
-        this.on('newListener', type => {
-            switch (type) {
-                case 'data':
-                case 'end':
-                    ref.ref();
-            }
-        });
-        this.on('removeListener', function(type) {
+        this.on('newListener', this.newListener);
+        this.on('removeListener', type => {
             switch (type) {
                 case 'data':
                 case 'end':
                     if (!this.listenerCount('data') && !this.listenerCount('end')) {
                         ref.unref();    
-                    }
+                }
             }
         });
         // NodeJS will not flush this buffer
@@ -114,8 +120,27 @@ class CommandStdin extends Transform {
         this._request();
     }
 
+    pause() {
+        this.ref.unref();
+        return super.pause();
+    }
+
+    resume() {
+        if (!this.isEnded) {
+            this.ref.ref();
+        }
+        return super.resume();
+    }
+
     private _request() {
         this.writer.write(new Chunk(ChunkType.StdinStart));
+    }
+
+    _flush(callback: Function) {
+        this.isEnded = true;
+        this.removeListener('newListener', this.newListener);
+        this.ref.unref();
+        callback();
     }
 
     _transform(chunk: Chunk, encoding: string, callback: Function) {
