@@ -1,6 +1,6 @@
 {
   "bin": {
-    "nodegun": "server.js"
+    "nodegun": "main.js"
   },
   "dependencies": {
     "argparse": "^1.0.0",
