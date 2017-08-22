@@ -99,23 +99,41 @@ Optional arguments:
                        flag with no argument starts one per CPU.
 ```
 
-## Writing a nail
+## Nails
 
-Most Node.JS programs should work as nails without modification.
+### Requirements
 
-Nodegun is designed to mimick command line arguments, environment variables, stdin, stdout, stderr, and working
-directory.
+Most Node.JS programs should work as nails without modification. Nodegun adjusts the runtime environment, including
+
+* `process.argv`
+* `process.exit`
+* `process.env`
+* `process.stdin`, `process.stdout`, `process.stderr`
+
+The most significant requirement: Nails must clean up after themselves. They must not corrupt state, create memory
+leaks, etc.
+
+The root nail module and re-run each time. Modules required by the nail module are run only once. In both cases, code
+is cached and updates to files on disk will not be included.
+
+### Resolution
+
+Nodegun resolves the requested nail
+
+1. As `node` would do, i.e. relative to the current directory.
+2. As `require` would do from nodegun process.
+
+### Concurrency
 
 Each worker process (or the main process, if there are no workers) runs only one nail at a time.
 
-## Examples
+### Examples
 
 Nodegun comes with a few [built-in nails](examples/).
 
 * `ng ./examples/hello` - Print `Hello World`
 * `ng ./examples/info` - Print arguments and working direcotry
 * `ng ./examples/echo` - Copy stdin to stdout
-
 
 ## What is this good for?
 
