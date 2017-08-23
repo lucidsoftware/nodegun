@@ -53,15 +53,20 @@ function startServer() {
     }
 }
 
+// since Node.js sets SO_REUSEADDR for all AF_INET sockets, it seems consistent to reuse for AF_UNIX
+if (args.local && cluster.isMaster) {
+    try {
+        fs.unlinkSync(args.local);
+    } catch (e) {
+        if (e.code !== 'ENOENT') {
+            throw e;
+        }
+    }
+}
+
 if (!args.workers || args.workers < 0) {
     startServer();
 } else if (cluster.isMaster) {
-    if (args.local) {
-        try {
-            fs.unlinkSync(args.local);
-        } catch (e) {
-        }
-    }
     for (let i = 0; i < args.workers; i++) {
         cluster.fork();
     }
