@@ -28,5 +28,7 @@ export class Server {
             });
         });
         this.handler = new Handler(commandFactory, this.server);
+        process.on('beforeExit', () => this.server.ref());
+        process.on('uncaughtException', err => console.error(err.stack));
     }
 }
