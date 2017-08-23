@@ -33,7 +33,7 @@ export class CommandFactory {
             require.extensions['.js'] = (module: NodeModule, filename: string) => {
                 module.id = '.';
                 const content = internalModule.stripBOM(fs.readFileSync(resolved, 'utf-8'));
-                module._compile(`process.mainModule = module; module.exports = () => {${content}\n};`, filename);
+                module._compile(`require.main = process.mainModule = module; module.exports = () => {${content}\n};`, filename);
                 require.extensions['.js'] = oldJs;
             };
             try {
