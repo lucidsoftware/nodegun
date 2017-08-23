@@ -47,7 +47,7 @@ export class Command {
 
         // arguments
         finalizers.push((argv => () => process.argv = argv)(process.argv));
-        process.argv = process.argv.slice(2).concat(context.args);
+        process.argv = process.argv.slice(0, 2).concat(context.args);
 
         // environment variables
         finalizers.push((env => () => process.env = env)(process.env));
