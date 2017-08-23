@@ -1,5 +1,5 @@
 import {Chunk, ChunkType} from './chunk';
-import {Readable, Transform, Writable} from 'stream';
+import {PassThrough, Readable, Transform, TransformOptions, Writable} from 'stream';
 import {EventEmitter} from 'events';
 import * as fs from 'fs';
 
@@ -7,7 +7,6 @@ export interface Ref {
     ref(): void
     unref(): void
 }
-
 
 export interface CommandContext {
     args: string[]
@@ -24,6 +23,26 @@ process.stderr.write = function() {
 process.stdout.write = function() {
     return stdoutWrite.apply(this, arguments);
 };
+
+// get-stdin maintains reference to process.stdin, so it must be replaced with a permemant value
+class FakeStdin extends PassThrough {
+    constructor(private readonly options?: TransformOptions) {
+        super(options);
+    }
+
+    reset() {
+        this.removeAllListeners();
+        PassThrough.call(this, this.options);
+    }
+}
+if (process.stdin.end) {
+    process.stdin.end();
+}
+Object.defineProperty(process, 'stdin', {
+    configurable: true,
+    enumerable: true,
+    get: (stdin => () => stdin)(new FakeStdin),
+});
 
 export class Command {
     constructor(private readonly main: () => void) {
@@ -61,12 +80,51 @@ export class Command {
         process.chdir(context.workingDirectory);
 
         // stdin
-        finalizers.push((stdin => () => Object.defineProperty(process, 'stdin', {configurable:true, enumerable:true, get: () => stdin}))(process.stdin));
         const stdin = new CommandStdin(writer, ref);
-        Object.defineProperty(process, 'stdin', {configurable:true, enumerable:true, get: () => stdin});
-        //process.stdin.end();
-        reader.pipe(stdin);//.pipe(process.stdin);
-        //finalizers.push(() => stdin.unpipe(process.stdin));
+        finalizers.push(() => {
+            stdin.unpipe(process.stdin);
+            (process.stdin as FakeStdin).reset();
+        });
+        reader.pipe(stdin).pipe(process.stdin);
+        function stdinNewListener(this: NodeJS.ReadStream, type: string) {
+            switch (type) {
+                case 'data':
+                case 'end':
+                    if (!this.isPaused) {
+                        ref.ref();
+                    }
+            }
+        }
+        function stdinRemoveListener(this: EventEmitter, type: string) {
+            switch (type) {
+                case 'data':
+                case 'end':
+                    if (!this.listenerCount('data') && !this.listenerCount('end')) {
+                        ref.unref();
+                }
+            }
+        }
+        function stdinPause() {
+            ref.unref();
+        }
+        function stdinResume() {
+            if (this.listenerCount('data') || this.listenerCount('end')) {
+                ref.ref();
+            }
+        }
+        process.stdin
+            .on('pause', stdinPause)
+            .on('resume', stdinResume)
+            .on('removeListener', stdinRemoveListener)
+            .on('newListener', stdinNewListener);
+
+        process.stdin.once('end', function(this: EventEmitter) {
+            this.removeListener('removeListener', stdinRemoveListener);
+            this.removeListener('newListener', stdinNewListener);
+            this.removeListener('pause', stdinPause);
+            this.removeListener('resume', stdinResume);
+            ref.unref();
+        });
 
         // stdout
         const stdout = new CommandStdout();
@@ -90,57 +148,19 @@ export class Command {
 }
 
 class CommandStdin extends Transform {
-    private isEnded: boolean = false;
-
-    private newListener = (type: string) => {
-        switch (type) {
-            case 'data':
-            case 'end':
-                if (!this.isPaused) {
-                    this.ref.ref();
-                }
-        }
-    }
-
     constructor(private readonly writer: Writable, private readonly ref: Ref) {
         super({writableObjectMode:true});
-        this.on('newListener', this.newListener);
-        this.on('removeListener', type => {
-            switch (type) {
-                case 'data':
-                case 'end':
-                    if (!this.listenerCount('data') && !this.listenerCount('end')) {
-                        ref.unref();    
-                }
-            }
-        });
         // NodeJS will not flush this buffer
         // a workaround is to send a newline (!) but that clutters the output
         // this.writer.write(new Chunk(ChunkType.Stderr, Buffer.from('\n')));
         this._request();
     }
 
-    pause() {
-        this.ref.unref();
-        return super.pause();
-    }
-
-    resume() {
-        if (!this.isEnded) {
-            this.ref.ref();
-        }
-        return super.resume();
-    }
-
     private _request() {
-        this.writer.write(new Chunk(ChunkType.StdinStart));
-    }
-
-    _flush(callback: Function) {
-        this.isEnded = true;
-        this.removeListener('newListener', this.newListener);
-        this.ref.unref();
-        callback();
+        try {
+            this.writer.write(new Chunk(ChunkType.StdinStart));
+        } catch (e) {
+        }
     }
 
     _transform(chunk: Chunk, encoding: string, callback: Function) {
@@ -176,7 +196,6 @@ class CommandOutput extends Transform {
     }
 
     _transform(data: Buffer, encoding: string, callback: Function) {
-        //console.error('CommandOutput._transform\n');
         callback(null, new Chunk(this.type, data));
     }
 }
