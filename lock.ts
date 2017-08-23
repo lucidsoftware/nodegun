@@ -3,7 +3,7 @@ export class Lock {
 
     acquire(): Promise<() => void> {
         if (this.queue) {
-            return new Promise(resolve => this.queue!.push(resolve));
+            return new Promise(resolve => this.queue!.push(() => resolve(() => this.next())));
         }
         this.queue = [];
         return Promise.resolve(() => this.next());
