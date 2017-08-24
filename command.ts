@@ -48,16 +48,8 @@ export class Command {
     constructor(private readonly main: () => void) {
     }
 
-    invoke(context: CommandContext, reader: Readable, writer: Writable, ref: Ref) {
+    invoke(context: CommandContext, reader: Readable, writer: Writable, ref: Ref): Promise<number> {
         const finalizers: (() => void)[] = [];
-
-        function finalize(code?: number | undefined) {
-            for (const finalizer of finalizers) {
-                finalizer();
-            }
-            writer.end(new Chunk(ChunkType.Exit, Buffer.from((code || 0).toString())));
-            ref.ref();
-        }
 
         ref.unref();
 
@@ -137,13 +129,23 @@ export class Command {
         stderr.pipe(writer, {end:false});
         finalizers.push((write => () => stderrWrite = write)(stderrWrite));
         stderrWrite = stderr.write.bind(stderr);
+    
+        return new Promise(resolve => {
+            function finalize(code: number | undefined = 0) {
+                for (const finalizer of finalizers) {
+                    finalizer();
+                }
+                ref.ref();
+                resolve(code);
+            }
 
-        finalizers.push((exit => () => process.exit = exit)(process.exit));
-        process.exit = finalize as (code?: number | undefined) => never;
-    
-        process.once('beforeExit', finalize);
-    
-        this.main();
+            finalizers.push((exit => () => process.exit = exit)(process.exit));
+            process.exit = finalize as (code?: number | undefined) => never;
+
+            process.once('beforeExit', finalize);
+
+            this.main();
+        });
     }
 }
 

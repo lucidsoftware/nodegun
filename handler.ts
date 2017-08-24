@@ -1,9 +1,12 @@
 import {Chunk, ChunkType} from './chunk';
 import {Command, Ref} from './command';
 import {CommandFactory} from './commandfactory';
+import {Lock} from './lock';
 import {Readable, Writable} from 'stream';
 
 export class Handler {
+    private readonly lock = new Lock();
+
     constructor(private readonly commandFactory: CommandFactory, private readonly ref: Ref) {   
     }
 
@@ -22,7 +25,7 @@ export class Handler {
                     if (workingDirectory == null) {
                         throw new MissingWorkingDirectory();
                     }
-                    let command;
+                    let command: Command;
                     try {
                         command = me.commandFactory.create(workingDirectory, chunk.data.toString());
                     } catch (e) {
@@ -31,7 +34,16 @@ export class Handler {
                         return;
                     }
                     this.removeListener('data', listener);
-                    command.invoke({args, env, workingDirectory}, reader, writer, me.ref);
+                    const params = {args, env, workingDirectory};
+                    me.lock.acquire().then(release => {
+                        command.invoke(params, reader, writer, me.ref).then(code => {
+                            try {
+                                writer.write(new Chunk(ChunkType.Exit, Buffer.from(code.toString())));
+                            } finally {
+                                release();
+                            }
+                        });
+                    });
                     break;
                 case ChunkType.Environment:
                     const [name, value] = chunk.data.toString().split('=', 2) as [string, string|undefined];
