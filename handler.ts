@@ -42,6 +42,7 @@ export class Handler {
                             } finally {
                                 release();
                             }
+                            writer.end();
                         });
                     });
                     break;
@@ -50,8 +51,6 @@ export class Handler {
                     if (value != null) {
                         env.set(name, value);
                     }
-                    break;
-                case ChunkType.Heartbeat:
                     break;
                 case ChunkType.WorkingDirectory:
                     workingDirectory = chunk.data.toString();

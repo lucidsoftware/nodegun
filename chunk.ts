@@ -40,7 +40,10 @@ export class ChunkParser extends Transform {
                     break;
                 }
                 offset += 4 + 1;
-                this.push(new Chunk(type, buffer.slice(offset, offset + size)));
+                // note: if we ever do pass along the heartbeats, we'd have to handle closed streams
+                if (type !== ChunkType.Heartbeat) {
+                    this.push(new Chunk(type, buffer.slice(offset, offset + size)));
+                }
                 offset += size;
             }
             if (offset) {

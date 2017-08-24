@@ -175,9 +175,6 @@ class CommandStdin extends Transform {
                 callback();
                 this.end();
                 break;
-            case ChunkType.Heartbeat:
-                callback();    
-                break;
             default:
                 callback(new CommandStdin.UnexpectedChunk(chunk.type));
         }
