@@ -14,18 +14,8 @@ export interface CommandContext {
     workingDirectory: string
 }
 
-// console.log, console.error maintain references to write(), so it must be replaced with a permenant hook
-let stderrWrite = process.stderr.write;
-let stdoutWrite = process.stdout.write;
-process.stderr.write = function() {
-    return stderrWrite.apply(this, arguments);
-};
-process.stdout.write = function() {
-    return stdoutWrite.apply(this, arguments);
-};
-
 // get-stdin maintains reference to process.stdin, so it must be replaced with a permemant value
-class FakeStdin extends PassThrough {
+class FakeStream extends PassThrough {
     constructor(private readonly options?: TransformOptions) {
         super(options);
     }
@@ -35,13 +25,36 @@ class FakeStdin extends PassThrough {
         PassThrough.call(this, this.options);
     }
 }
+
+// console.log, console.error maintain references to write(), so it must be replaced with a permenant hook
+let stderrWrite = process.stderr.write;
+let stdoutWrite = process.stdout.write;
+
+Object.defineProperty(process, 'stdout', {
+    configurable: true,
+    enumerable: true,
+    get: (stdin => () => stdin)(new FakeStream),
+});
+Object.defineProperty(process, 'stderr', {
+    configurable: true,
+    enumerable: true,
+    get: (stdin => () => stdin)(new FakeStream),
+});
+
+process.stderr.write = function() {
+    return stderrWrite.apply(this, arguments);
+};
+process.stdout.write = function() {
+    return stdoutWrite.apply(this, arguments);
+};
+
 if (process.stdin.end) {
     process.stdin.end();
 }
 Object.defineProperty(process, 'stdin', {
     configurable: true,
     enumerable: true,
-    get: (stdin => () => stdin)(new FakeStdin),
+    get: (stdin => () => stdin)(new FakeStream),
 });
 
 export class Command {
@@ -75,7 +88,7 @@ export class Command {
         const stdin = new CommandStdin(writer, ref);
         finalizers.push(() => {
             stdin.unpipe(process.stdin);
-            (process.stdin as FakeStdin).reset();
+            (process.stdin as FakeStream).reset();
         });
         reader.pipe(stdin).pipe(process.stdin);
         function stdinNewListener(this: NodeJS.ReadStream, type: string) {
@@ -122,14 +135,17 @@ export class Command {
         const stdout = new CommandStdout();
         stdout.pipe(writer, {end:false});
         finalizers.push((write => () => stdoutWrite = write)(stdoutWrite));
+        finalizers.push(() => (process.stdout as FakeStream).reset());
         stdoutWrite = stdout.write.bind(stdout);
 
         // stderr
         const stderr = new CommandStderr();
         stderr.pipe(writer, {end:false});
         finalizers.push((write => () => stderrWrite = write)(stderrWrite));
+        finalizers.push(() => (process.stderr as FakeStream).reset());
         stderrWrite = stderr.write.bind(stderr);
     
+        process.nextTick(this.main);
         return new Promise(resolve => {
             function finalize(code: number | undefined = 0) {
                 for (const finalizer of finalizers) {
@@ -143,8 +159,6 @@ export class Command {
             process.exit = finalize as (code?: number | undefined) => never;
 
             process.once('beforeExit', finalize);
-
-            this.main();
         });
     }
 }

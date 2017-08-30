@@ -1,15 +1,14 @@
 #!/usr/bin/env node
 import {ArgumentParser} from 'argparse';
-import * as cluster from 'cluster';
 import * as fs from 'fs';
 import * as net from 'net';
 import * as os from 'os';
 import {CommandFactory} from './commandfactory';
+import {MasterServer} from './cluster';
 import {Server} from './server';
 
-try {
+if (fs.existsSync(__filename.replace(/\.js$/, '.ts'))) {
     require('source-map-support').install();
-} catch(e) {
 }
 
 const npmPackage = require('./package.json');
@@ -18,7 +17,7 @@ const parser = new ArgumentParser({description: 'Start Node.js server that suppo
 const transport = parser.addMutuallyExclusiveGroup();
 transport.addArgument(['--tcp'], {
     constant: '127.0.0.1:2113',
-    help:'TCP address to listen to, given as ip, port, or ip:port. IP defaults to 0.0.0.0, and port defaults to 2113. If no other transport is specified, TCP is used.',
+    help: 'TCP address to listen to, given as ip, port, or ip:port. IP defaults to 0.0.0.0, and port defaults to 2113. If no other transport is specified, TCP is used.',
     nargs: '?',
 });
 transport.addArgument(['--local'], {
@@ -28,33 +27,32 @@ transport.addArgument(['--local'], {
 });
 parser.addArgument(['--workers'], {
     constant:os.cpus().length,
-    help:'If present, number of worker processes to start. A flag with no argument starts one per CPU.',
+    help: 'If present, number of worker processes to start. A flag with no argument starts one per CPU.',
     nargs:'?',
 });
 const args: {tcp:string|undefined, local:string|undefined, workers:number|undefined} = parser.parseArgs();
 
-function startServer() {
-    const server = new Server(new CommandFactory());
+function listen(server: net.Server) {
     if (args.local) {
-        server.server.listen(args.local);
+        server.listen(args.local);
     } else if (args.tcp) {
         const [first, second] = args.tcp.split(':', 2) as [string, string|undefined];
         if (second == null) {
             if (first.includes('.')) {
-                server.server.listen(2113, first);
+                server.listen(2113, first);
             } else {
-                server.server.listen(first);
+                server.listen(first);
             }
         } else {
-            server.server.listen(+first, second);
+            server.listen(+first, second);
         }
     } else {
-        server.server.listen(2113);
+        server.listen(2113);
     }
 }
 
 // since Node.js sets SO_REUSEADDR for all AF_INET sockets, it seems consistent to reuse for AF_UNIX
-if (args.local && cluster.isMaster) {
+if (args.local) {
     try {
         fs.unlinkSync(args.local);
     } catch (e) {
@@ -64,12 +62,10 @@ if (args.local && cluster.isMaster) {
     }
 }
 
-if (!args.workers || args.workers < 0) {
-    startServer();
-} else if (cluster.isMaster) {
-    for (let i = 0; i < args.workers; i++) {
-        cluster.fork();
-    }
+let server;
+if (!args.workers || args.workers <= 0) {
+    server = new Server(new CommandFactory());
 } else {
-    startServer();
+    server = new MasterServer(require.resolve('./worker.js'), args.workers);
 }
+listen(server.server);

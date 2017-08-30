@@ -31,6 +31,7 @@ export class Handler {
                     } catch (e) {
                         writer.write(new Chunk(ChunkType.Stderr, Buffer.from(`${e.stack}\n`)));
                         writer.write(new Chunk(ChunkType.Exit, Buffer.from((2).toString())));
+                        writer.end();
                         return;
                     }
                     this.removeListener('data', listener);
