@@ -26,19 +26,21 @@ class FakeStream extends PassThrough {
     }
 }
 
+export const realStderrWrite = process.stderr.write.bind(process.stderr)
+export const realStdoutWrite = process.stdout.write.bind(process.stdout);
 // console.log, console.error maintain references to write(), so it must be replaced with a permenant hook
-let stderrWrite = process.stderr.write;
-let stdoutWrite = process.stdout.write;
+let stderrWrite = realStderrWrite;
+let stdoutWrite = realStdoutWrite;
 
-Object.defineProperty(process, 'stdout', {
-    configurable: true,
-    enumerable: true,
-    get: (stdin => () => stdin)(new FakeStream),
-});
 Object.defineProperty(process, 'stderr', {
     configurable: true,
     enumerable: true,
-    get: (stdin => () => stdin)(new FakeStream),
+    get: (stderr => () => stderr)(new FakeStream),
+});
+Object.defineProperty(process, 'stdout', {
+    configurable: true,
+    enumerable: true,
+    get: (stdout => () => stdout)(new FakeStream),
 });
 
 process.stderr.write = function() {
@@ -130,6 +132,14 @@ export class Command {
             this.removeListener('resume', stdinResume);
             ref.unref();
         });
+        process.stdin.on('newListener', function listener(this: NodeJS.ReadStream, type) {
+            switch (type) {
+                case 'data':
+                case 'end':
+                    this.removeListener('newListener', listener);
+                    stdin.request();
+            }
+        });
 
         // stdout
         const stdout = new CommandStdout();
@@ -166,13 +176,12 @@ export class Command {
 class CommandStdin extends Transform {
     constructor(private readonly writer: Writable, private readonly ref: Ref) {
         super({writableObjectMode:true});
+    }
+
+    request() {
         // NodeJS will not flush this buffer
         // a workaround is to send a newline (!) but that clutters the output
         // this.writer.write(new Chunk(ChunkType.Stderr, Buffer.from('\n')));
-        this._request();
-    }
-
-    private _request() {
         try {
             this.writer.write(new Chunk(ChunkType.StdinStart));
         } catch (e) {
@@ -183,7 +192,7 @@ class CommandStdin extends Transform {
         switch (chunk.type) {
             case ChunkType.Stdin:
                 callback(null, chunk.data);
-                this._request();
+                this.request();
                 break;
             case ChunkType.StdinEnd:
                 callback();
