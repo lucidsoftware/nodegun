@@ -83,20 +83,33 @@ The-Fast-and-the-Furious
 ## Server options
 
 ```
-usage: nodegun [-h] [-v] [--tcp [TCP] | --local [LOCAL]] [--workers [WORKERS]]
+usage: main.js [-h] [-v] [--tcp [TCP] | --local [LOCAL]]
+               [--status-tcp TCP | --status-local LOCAL] [--workers [WORKERS]]
+               
 
-Start Node.js server that supports the Nailgun protocol.
+Node.js server that supports the Nailgun protocol.
 
 Optional arguments:
-  -h, --help           Show this help message and exit.
-  -v, --version        Show program's version number and exit.
-  --tcp [TCP]          TCP address to listen to, given as ip, port, or 
-                       ip:port. IP defaults to 0.0.0.0, and port defaults to 
-                       2113. If no other transport is specified, TCP is used.
-  --local [LOCAL]      Local address to listen to. Defaults to /tmp/nodegun.
-                       sock.
-  --workers [WORKERS]  If present, number of worker processes to start. A 
-                       flag with no argument starts one per CPU.
+  -h, --help            Show this help message and exit.
+  -v, --version         Show program's version number and exit.
+  --workers [WORKERS]   If present, number of worker processes to start. A 
+                        flag with no argument starts one per CPU.
+
+Transport:
+  Transport and address. TCP is used by default.
+
+  --tcp [TCP]           TCP address to listen to, given as ip, port, or 
+                        ip:port. IP defaults to 0.0.0.0, and port defaults to 
+                        2113.
+  --local [LOCAL]       Local address to listen to. Defaults to /tmp/nodegun.
+                        sock.
+
+Status:
+  Optionally expose internal status information via HTTP server.
+
+  --status-tcp TCP      TCP address to listen to for status, given as ip, 
+                        port, or ip:port. IP defaults to 0.0.0.0.
+  --status-local LOCAL  Local address to listen to for status.
 ```
 
 ## Nails

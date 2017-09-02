@@ -26,6 +26,10 @@ export abstract class BaseServer {
 
         socket.on('timeout', () => socket.destroy(new Error('timeout')));
     }
+
+    status() {
+        return Promise.resolve(this.handler.status());
+    }
 }
 
 export class Server extends BaseServer {
@@ -35,6 +39,5 @@ export class Server extends BaseServer {
         const server = net.createServer(socket => this.connection(socket));
         super(commandFactory, server);
         this.server = server;
-        
     }
 }

@@ -1,6 +1,7 @@
 import {BaseServer} from './server';
 import {CommandFactory} from './commandfactory';
 import * as childProcess from 'child_process';
+import * as events from 'events';
 import * as net from 'net';
 
 export class MasterServer {
@@ -27,6 +28,20 @@ export class MasterServer {
             worker.child.send('connection', tcp);
         });
     }
+
+    status() {
+        return Promise.all(this.workers.map(({child, connections}) => {
+            return new Promise<string>(resolve => {
+                child.send('status', error => error && resolve(error.toString()));
+                child.on('message', function listener(this: events.EventEmitter, message) {
+                    if (message && message.type === 'status') {
+                        resolve(message.value);
+                        this.removeListener('message', listener);
+                    }
+                });
+            }).then(process => ({process, connections}));
+        })).then(workers => ({workers}));
+    }
 }
 
 export class WorkerServer extends BaseServer {
@@ -38,6 +53,8 @@ export class WorkerServer extends BaseServer {
                     handle.push(message.data);
                 }
                 this.connection(socket);
+            } else if (message === 'status') {
+                this.status().then(value => process.send!({type:'status', value}));
             }
         });
         super(commandFactory, (process as any).channel || (process as any)._channel);

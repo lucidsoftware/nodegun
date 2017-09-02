@@ -4,10 +4,33 @@ import {CommandFactory} from './commandfactory';
 import {Lock} from './lock';
 import {Readable, Writable} from 'stream';
 
+export class TrackingRef {
+    private value = true;
+
+    constructor(readonly delegate: Ref) {
+    }
+
+    getValue() {
+        return this.value;
+    }
+
+    ref() {
+        this.value = true;
+        this.delegate.ref();
+    }
+
+    unref() {
+        this.value = false;
+        this.delegate.unref();
+    }
+}
+
 export class Handler {
     private readonly lock = new Lock();
+    private readonly ref: TrackingRef
 
-    constructor(private readonly commandFactory: CommandFactory, private readonly ref: Ref) {   
+    constructor(private readonly commandFactory: CommandFactory, ref: Ref) {
+        this.ref = new TrackingRef(ref);
     }
 
     handle(reader: Readable, writer: Writable) {
@@ -60,6 +83,13 @@ export class Handler {
                     throw new Error('Unexpected chunk type');
             }
         });
+    }
+
+    status() {
+        return {
+            lock: this.lock.status(),
+            waitingOnInput: this.ref.getValue(),
+        }
     }
 }
 

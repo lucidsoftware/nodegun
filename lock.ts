@@ -9,6 +9,13 @@ export class Lock {
         return Promise.resolve(() => this.next());
     }
 
+    status() {
+        return {
+            'available': !this.queue,
+            'queue': this.queue ? this.queue.length : 0,
+        };
+    }
+
     private next() {
         if (this.queue) {
             const current = this.queue.shift();
