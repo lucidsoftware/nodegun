@@ -54,7 +54,23 @@ const args: {status_local:string|undefined, status_tcp:string|undefined, tcp:str
 
 function listen(server: net.Server) {
     if (args.local) {
-        server.listen(args.local);
+        const local = args.local;
+        server.listen(local);
+        const inode = fs.statSync(local).ino;
+        const socketCheck = setInterval(() => {
+            try {
+                if (inode === fs.statSync(local).ino) {
+                    return;
+                }
+            } catch (e) {
+                if (e.code !== 'ENOENT') {
+                    throw e;
+                }
+            }
+            console.error('Socket deleted');
+            process.exit(1);
+        }, 5 * 1000);
+        socketCheck.unref();
     } else if (args.tcp) {
         const [first, second] = args.tcp.split(':', 2) as [string, string|undefined];
         if (second == null) {
