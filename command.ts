@@ -157,12 +157,12 @@ export class Command {
     
         process.nextTick(this.main);
         return new Promise(resolve => {
-            function finalize(code: number | undefined = 0) {
+            function finalize(code?: number | undefined) {
                 for (const finalizer of finalizers) {
                     finalizer();
                 }
                 ref.ref();
-                resolve(code);
+                resolve(code || 0);
             }
 
             finalizers.push((exit => () => process.exit = exit)(process.exit));
