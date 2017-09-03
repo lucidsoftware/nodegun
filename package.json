@@ -16,7 +16,8 @@
   "name": "@lucidsoftware/nodegun",
   "repository": "lucidsoftware/nodegun",
   "scripts": {
-    "prestart": "yarn install && tsc",
+    "prepublish": "tsc",
+    "prestart": "yarn install",
     "start": "node main.js"
   },
   "version": "0.4.5"
