@@ -12,6 +12,12 @@ export class MasterServer {
     constructor(module: string, workerCount: number) {
         for (let i = 0; i < workerCount; i++) {
             const child = childProcess.fork(module, []);
+            child.on('exit', code => {
+                if (code) {
+                    real.stderrWrite(`Worker pid ${child.pid} crashed`);
+                    real.processExit(1);
+                }
+            });
             const worker = {child, connections:0};
             child.on('message', (message) => {
                 if (message === 'finished') {
