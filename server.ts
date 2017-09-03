@@ -22,6 +22,7 @@ export abstract class BaseServer {
 
         this.handler.handle(parser, serializer);
 
+        socket.on('error', socket.destroy);
         socket.on('timeout', () => socket.destroy(new Error('timeout')));
     }
 
@@ -34,7 +35,7 @@ export class Server extends BaseServer {
     public readonly server: net.Server;
 
     constructor(commandFactory: CommandFactory) {
-        const server = net.createServer(socket => this.connection(socket));
+        const server = net.createServer({allowHalfOpen:true}, socket => this.connection(socket));
         super(commandFactory, server);
         this.server = server;
     }

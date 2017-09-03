@@ -54,11 +54,7 @@ export class WorkerServer extends BaseServer {
     constructor(commandFactory: CommandFactory) {
         process.on('message', (message, handle) => {
             if (message === 'connection') {
-                const socket = new net.Socket({fd:handle.fd, allowHalfOpen:true, readable:true, writable:true});
-                if (message.data) {
-                    handle.push(message.data);
-                }
-                this.connection(socket);
+                this.connection(new net.Socket({allowHalfOpen:true, fd:handle.fd, readable:true, writable:true}));
             } else if (message === 'status') {
                 this.status().then(value => process.send!({type:'status', value}));
             }
