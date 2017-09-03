@@ -8,10 +8,8 @@ export class NamedLock {
     }
 
     status() {
-        return {
-            running: this.queue[0] && this.queue[0][0],
-            queue: this.queue.slice(1).map(([name]) => name),
-        };
+        const [running, ...queue] = this.queue.map(([name]) => name);
+        return {running: running || null, queue};
     }
 
     private next() {
