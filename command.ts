@@ -189,7 +189,8 @@ export class Command {
             finalizers.push((exit => () => process.exit = exit)(process.exit));
             process.exit = finalize as (code?: number | undefined) => never;
 
-            process.once('beforeExit', finalize);
+            process.on('beforeExit', finalize);
+            finalizers.push(() => process.removeListener('beforeExit', finalize));
         });
     }
 }
