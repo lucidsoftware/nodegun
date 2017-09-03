@@ -1,29 +1,26 @@
-export class Lock {
-    private queue: (() => void)[] | null = null;
+export class NamedLock {
+    private queue: ([string, () => Promise<void>])[] = [];
 
-    acquire(): Promise<() => void> {
-        if (this.queue) {
-            return new Promise(resolve => this.queue!.push(() => resolve(() => this.next())));
+    acquire(name: string, action: () => Promise<void>) {
+        if (this.queue.push([name, action]) === 1) {
+            this.next();
         }
-        this.queue = [];
-        return Promise.resolve(() => this.next());
     }
 
     status() {
         return {
-            'available': !this.queue,
-            'queue': this.queue ? this.queue.length : 0,
+            running: this.queue[0] && this.queue[0][0],
+            queue: this.queue.slice(1).map(([name]) => name),
         };
     }
 
     private next() {
-        if (this.queue) {
-            const current = this.queue.shift();
-            if (current) {
-                current();
-            } else {
-                this.queue = null;
-            }   
+        const then = () => {
+            this.queue.shift();
+            if (this.queue.length) {
+                this.next();
+            }
         }
+        this.queue[0][1]().then(then, then);
     }
 }

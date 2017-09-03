@@ -1,7 +1,7 @@
 import {Chunk, ChunkType} from './chunk';
 import {Command, Ref} from './command';
 import {CommandFactory} from './commandfactory';
-import {Lock} from './lock';
+import {NamedLock} from './lock';
 import {Readable, Writable} from 'stream';
 
 export class TrackingRef {
@@ -26,7 +26,7 @@ export class TrackingRef {
 }
 
 export class Handler {
-    private readonly lock = new Lock();
+    private readonly lock = new NamedLock();
     private readonly ref: TrackingRef
 
     constructor(private readonly commandFactory: CommandFactory, ref: Ref) {
@@ -48,9 +48,10 @@ export class Handler {
                     if (workingDirectory == null) {
                         throw new MissingWorkingDirectory();
                     }
+                    const commandString = chunk.data.toString();
                     let command: Command;
                     try {
-                        command = me.commandFactory.create(workingDirectory, chunk.data.toString());
+                        command = me.commandFactory.create(workingDirectory, commandString);
                     } catch (e) {
                         writer.write(new Chunk(ChunkType.Stderr, Buffer.from(`${e.stack}\n`)));
                         writer.write(new Chunk(ChunkType.Exit, Buffer.from((2).toString())));
@@ -59,16 +60,10 @@ export class Handler {
                     }
                     this.removeListener('data', listener);
                     const params = {args, env, workingDirectory};
-                    me.lock.acquire().then(release => {
-                        command.invoke(params, reader, writer, me.ref).then(code => {
-                            try {
-                                writer.write(new Chunk(ChunkType.Exit, Buffer.from(code.toString())));
-                            } finally {
-                                release();
-                            }
-                            writer.end();
-                        });
-                    });
+                    me.lock.acquire([commandString].concat(args).join(' '), () => command.invoke(params, reader, writer, me.ref).then(code => {
+                        writer.write(new Chunk(ChunkType.Exit, Buffer.from(code.toString())));
+                        writer.end();
+                    }));
                     break;
                 case ChunkType.Environment:
                     const [name, value] = chunk.data.toString().split('=', 2) as [string, string|undefined];
