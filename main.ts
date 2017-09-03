@@ -123,7 +123,13 @@ if (args.local) {
     });
     statusServer.unref();
     if (args.status_local) {
-        fs.unlinkSync(args.status_local);
+        try {
+            fs.unlinkSync(args.status_local);
+        } catch (e) {
+            if (e.code !== 'ENOENT') {
+                throw e;
+            }
+        }
         statusServer.listen(args.status_local);
     } else if (args.status_tcp) {
         const [first, second] = args.status_tcp.split(':', 2) as [string, string|undefined];
