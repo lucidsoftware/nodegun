@@ -4,6 +4,7 @@ import * as fs from 'fs';
 import * as http from 'http';
 import * as net from 'net';
 import * as os from 'os';
+import {real} from './command';
 import {CommandFactory} from './commandfactory';
 import {MasterServer} from './cluster';
 import {Server} from './server';
@@ -54,23 +55,7 @@ const args: {status_local:string|undefined, status_tcp:string|undefined, tcp:str
 
 function listen(server: net.Server) {
     if (args.local) {
-        const local = args.local;
-        server.listen(local);
-        const inode = fs.statSync(local).ino;
-        const socketCheck = setInterval(() => {
-            try {
-                if (inode === fs.statSync(local).ino) {
-                    return;
-                }
-            } catch (e) {
-                if (e.code !== 'ENOENT') {
-                    throw e;
-                }
-            }
-            console.error('Socket deleted');
-            process.exit(1);
-        }, 5 * 1000);
-        socketCheck.unref();
+        server.listen(args.local);
     } else if (args.tcp) {
         const [first, second] = args.tcp.split(':', 2) as [string, string|undefined];
         if (second == null) {
@@ -98,7 +83,7 @@ if (args.local) {
     }
 }
 
-let server: {server: net.Server, status():Promise<any>};
+let server: MasterServer | Server;
 if (!args.workers || args.workers <= 0) {
     server = new Server(new CommandFactory());
 } else {
@@ -106,6 +91,26 @@ if (!args.workers || args.workers <= 0) {
 }
 listen(server.server);
 
+if (args.local) {
+    const local = args.local;
+    const inode = fs.statSync(local).ino;
+    const socketCheck = setInterval(() => {
+        try {
+            if (inode === fs.statSync(local).ino) {
+                return;
+            }
+        } catch (e) {
+            if (e.code !== 'ENOENT') {
+                real.stderrWrite(`${e.stack}\n`);
+                return;
+            }
+        }
+        clearInterval(socketCheck);
+        real.stderrWrite('Socket deleted\n');
+        server.shutdown();
+    }, 5 * 1000);
+    socketCheck.unref();
+}
 
 {
     const statusServer = http.createServer((request, response) => {

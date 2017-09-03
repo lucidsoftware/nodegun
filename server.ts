@@ -10,8 +10,6 @@ export abstract class BaseServer {
 
     constructor(commandFactory: CommandFactory, ref: Ref) {
         this.handler = new Handler(commandFactory, ref);
-        process.on('beforeExit', () => ref.ref());
-        process.on('uncaughtException', err => console.error(err.stack));
     }
 
     protected connection(socket: net.Socket) {
@@ -27,7 +25,7 @@ export abstract class BaseServer {
         socket.on('timeout', () => socket.destroy(new Error('timeout')));
     }
 
-    status() {
+    status(): Promise<any> {
         return Promise.resolve(this.handler.status());
     }
 }
@@ -39,5 +37,9 @@ export class Server extends BaseServer {
         const server = net.createServer(socket => this.connection(socket));
         super(commandFactory, server);
         this.server = server;
+    }
+
+    shutdown() {
+        this.server.close();
     }
 }

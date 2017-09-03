@@ -1,5 +1,6 @@
 import {BaseServer} from './server';
 import {CommandFactory} from './commandfactory';
+import {real} from './command';
 import * as childProcess from 'child_process';
 import * as events from 'events';
 import * as net from 'net';
@@ -29,7 +30,7 @@ export class MasterServer {
         });
     }
 
-    status() {
+    status(): Promise<any> {
         return Promise.all(this.workers.map(({child, connections}) => {
             return new Promise<string>(resolve => {
                 child.send('status', error => error && resolve(error.toString()));
@@ -41,6 +42,11 @@ export class MasterServer {
                 });
             }).then(process => ({process, connections}));
         })).then(workers => ({workers}));
+    }
+
+    shutdown() {
+        // TODO: something else(?)
+        setTimeout(() => real.processExit(), 5 * 1000);
     }
 }
 

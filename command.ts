@@ -26,41 +26,54 @@ class FakeStream extends PassThrough {
     }
 }
 
-export const realStderrWrite = process.stderr.write.bind(process.stderr)
-export const realStdoutWrite = process.stdout.write.bind(process.stdout);
-// console.log, console.error maintain references to write(), so it must be replaced with a permenant hook
-let stderrWrite = realStderrWrite;
-let stdoutWrite = realStdoutWrite;
-
-Object.defineProperty(process, 'stderr', {
-    configurable: true,
-    enumerable: true,
-    get: (stderr => () => stderr)(new FakeStream),
-});
-Object.defineProperty(process, 'stdout', {
-    configurable: true,
-    enumerable: true,
-    get: (stdout => () => stdout)(new FakeStream),
-});
-
-process.stderr.write = function() {
-    return stderrWrite.apply(this, arguments);
-};
-process.stdout.write = function() {
-    return stdoutWrite.apply(this, arguments);
-};
-
-if (process.stdin.end) {
-    process.stdin.end();
+export namespace real {
+    export const stderrWrite = process.stderr.write.bind(process.stderr);
+    export const stdoutWrite = process.stdout.write.bind(process.stdout);
+    export const processExit = process.exit.bind(process);
 }
-Object.defineProperty(process, 'stdin', {
-    configurable: true,
-    enumerable: true,
-    get: (stdin => () => stdin)(new FakeStream),
-});
+
+// console.log, console.error maintain references to write(), so it must be replaced with a permenant hook
+let stderrWrite = real.stderrWrite;
+let stdoutWrite = real.stdoutWrite;
+
+
+let installed = false;
+function install() {
+    if (installed) {
+        return;
+    }
+    installed = true;
+    Object.defineProperty(process, 'stderr', {
+        configurable: true,
+        enumerable: true,
+        get: (stderr => () => stderr)(new FakeStream),
+    });
+    Object.defineProperty(process, 'stdout', {
+        configurable: true,
+        enumerable: true,
+        get: (stdout => () => stdout)(new FakeStream),
+    });
+
+    process.stderr.write = function() {
+        return stderrWrite.apply(this, arguments);
+    };
+    process.stdout.write = function() {
+        return stdoutWrite.apply(this, arguments);
+    };
+
+    if (process.stdin.end) {
+        process.stdin.end();
+    }
+    Object.defineProperty(process, 'stdin', {
+        configurable: true,
+        enumerable: true,
+        get: (stdin => () => stdin)(new FakeStream),
+    });
+}
 
 export class Command {
     constructor(private readonly main: () => void) {
+        install();
     }
 
     invoke(context: CommandContext, reader: Readable, writer: Writable, ref: Ref): Promise<number> {
@@ -154,7 +167,15 @@ export class Command {
         finalizers.push((write => () => stderrWrite = write)(stderrWrite));
         finalizers.push(() => (process.stderr as FakeStream).reset());
         stderrWrite = stderr.write.bind(stderr);
-    
+
+        // errors
+        function uncaughtExceptionListener(err: Error) {
+            console.error(err.stack);
+            process.exit(1);
+        }
+        process.on('uncaughtException', uncaughtExceptionListener);
+        finalizers.push(() => process.removeListener('uncaughtException', uncaughtExceptionListener));
+
         process.nextTick(this.main);
         return new Promise(resolve => {
             function finalize(code?: number | undefined) {
