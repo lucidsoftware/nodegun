@@ -4,10 +4,10 @@ import {CommandFactory} from './commandfactory';
 import {NamedLock} from './lock';
 import {Readable, Writable} from 'stream';
 
-export class TrackingRef {
+class TrackingRef {
     private value = true;
 
-    constructor(readonly delegate: Ref) {
+    constructor(private readonly delegate: Ref) {
     }
 
     getValue() {
