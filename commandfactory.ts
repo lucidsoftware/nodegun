@@ -1,5 +1,4 @@
 import * as fs from 'fs';
-import * as internalModule from 'internal/module';
 import {Command} from './command';
 
 class Resolver {
@@ -32,7 +31,11 @@ export class CommandFactory {
             const oldJs = require.extensions['.js'];
             require.extensions['.js'] = (module: NodeModule, filename: string) => {
                 module.id = '.';
-                const content = internalModule.stripBOM(fs.readFileSync(resolved, 'utf-8'));
+                let content = fs.readFileSync(resolved, 'utf-8');
+                // remove BOM, copied from internal/module stripBOM
+                if (content.charCodeAt(0) === 0xFEFF) {
+                   content = content.slice(1);
+                }
                 module._compile(`require.main = process.mainModule = module; module.exports = () => {${content}\n};`, filename);
                 require.extensions['.js'] = oldJs;
             };
