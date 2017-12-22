@@ -62,6 +62,13 @@ function install() {
         get: (stdout => () => stdout)(new FakeStream),
     });
 
+    process.stderr.write = function() {
+        return stderrWrite.apply(this, arguments);
+    };
+    process.stdout.write = function() {
+        return stdoutWrite.apply(this, arguments);
+    };
+
     if (process.stdin.end) {
         process.stdin.end();
     }
