@@ -20,5 +20,5 @@
     "prestart": "yarn install",
     "start": "node main.js"
   },
-  "version": "0.4.8"
+  "version": "0.4.9"
 }
