@@ -6,15 +6,9 @@
   version "1.0.30"
   resolved "https://registry.yarnpkg.com/@types/argparse/-/argparse-1.0.30.tgz#513c248995e5e695d1f665af462c77c4d1c179d6"
 
-"@types/node@*", "@types/node@^8.0.0":
+"@types/node@^8.0.0":
   version "8.0.22"
   resolved "https://registry.yarnpkg.com/@types/node/-/node-8.0.22.tgz#9c6bfee1f45f5e9952ff6b487e657ecca48c7777"
-
-"@types/source-map-support@^0.4.0":
-  version "0.4.0"
-  resolved "https://registry.yarnpkg.com/@types/source-map-support/-/source-map-support-0.4.0.tgz#a62a1866614af68c888173c001481f242aaf148b"
-  dependencies:
-    "@types/node" "*"
 
 argparse@^1.0.0:
   version "1.0.9"
