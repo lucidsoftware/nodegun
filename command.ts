@@ -69,7 +69,7 @@ function install() {
         return stdoutWrite.apply(this, arguments);
     };
 
-    if (process.stdin.end) {
+    if (typeof process.stdin.end === 'function') {
         process.stdin.end();
     }
     Object.defineProperty(process, 'stdin', {
@@ -102,7 +102,7 @@ export class Command {
         for (const [key, value] of context.env) {
             process.env[key] = value;
         }
-    
+
         // working directory
         finalizers.push((workingDirectory => () => process.chdir(workingDirectory))(process.cwd()));
         process.chdir(context.workingDirectory);
