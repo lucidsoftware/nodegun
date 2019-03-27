@@ -27,9 +27,8 @@ export class MasterServer {
             this.workers.push(worker);
         }
         // Balance by least connections. Prefer certain workers when breaking ties, in order to capitilize on JIT.
-        this.server = net.createServer();
-        this.server.once('listening', () => (this.server as any)._handle.onconnection = (err: any, tcp: any) => {
-            // TODO: check err
+        this.server = net.createServer({allowHalfOpen: true, pauseOnConnect: true});
+        this.server.on('connection', tcp => {
             const worker = this.workers.reduce((a, b) => a.connections <= b.connections ? a : b);
             ++worker.connections;
             worker.child.send('connection', tcp);
@@ -60,7 +59,7 @@ export class WorkerServer extends BaseServer {
     constructor(commandFactory: CommandFactory) {
         process.on('message', (message, handle) => {
             if (message === 'connection') {
-                this.connection(new net.Socket({allowHalfOpen:true, fd:handle.fd, readable:true, writable:true}));
+                this.connection(handle);
             } else if (message === 'status') {
                 this.status().then(value => process.send!({type:'status', value}));
             }
