@@ -69,8 +69,8 @@ function install() {
         return stdoutWrite.apply(this, arguments);
     };
 
-    if (typeof process.stdin.end === 'function') {
-        process.stdin.end();
+    if (typeof process.stdin.destroy === 'function') {
+        process.stdin.destroy();
     }
     Object.defineProperty(process, 'stdin', {
         configurable: true,
