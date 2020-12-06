@@ -2,6 +2,7 @@ import {Chunk, ChunkType} from './chunk';
 import {PassThrough, Readable, Transform, TransformOptions, Writable} from 'stream';
 import {EventEmitter} from 'events';
 import * as fs from 'fs';
+import * as tty from 'tty';
 
 export interface Ref {
     ref(): void
@@ -16,7 +17,7 @@ export interface CommandContext {
 
 // get-stdin maintains reference to process.stdin, so it must be replaced with a permemant value
 class FakeStream extends PassThrough {
-    constructor(private readonly options?: TransformOptions) {
+    constructor(private readonly fd: number, private readonly options?: TransformOptions) {
         super(options);
     }
 
@@ -24,7 +25,16 @@ class FakeStream extends PassThrough {
         this.removeAllListeners();
         PassThrough.call(this, this.options);
     }
+
+    get isTTY(): boolean {
+        return +(process.env[`NAILGUN_TTY_${this.fd}`] as any) > 0;
+    }
 }
+
+// @ts-ignore
+FakeStream.prototype.getColorDepth = tty.WriteStream.prototype.getColorDepth;
+// @ts-ignore
+FakeStream.prototype.hasColors = tty.WriteStream.prototype.hasColors;
 
 export namespace real {
     export const stderrWrite = process.stderr.write.bind(process.stderr);
@@ -54,12 +64,12 @@ function install() {
     Object.defineProperty(process, 'stderr', {
         configurable: true,
         enumerable: true,
-        get: (stderr => () => stderr)(new FakeStream),
+        get: (stderr => () => stderr)(new FakeStream(2)),
     });
     Object.defineProperty(process, 'stdout', {
         configurable: true,
         enumerable: true,
-        get: (stdout => () => stdout)(new FakeStream),
+        get: (stdout => () => stdout)(new FakeStream(1)),
     });
 
     process.stderr.write = function() {
@@ -75,7 +85,7 @@ function install() {
     Object.defineProperty(process, 'stdin', {
         configurable: true,
         enumerable: true,
-        get: (stdin => () => stdin)(new FakeStream),
+        get: (stdin => () => stdin)(new FakeStream(0)),
     });
 }
 
